@@ -32,9 +32,9 @@ list3 -> X ------+
 // This means we can never actually get data out of one of our lists,
 // and they can't be mutated either
 
-use std::rc::Rc;
+use std::sync::Arc;
 
-type Link<T> = Option<Rc<Node<T>>>;
+type Link<T> = Option<Arc<Node<T>>>;
 
 struct Node<T> {
   elem: T,
@@ -68,7 +68,7 @@ impl<T> Drop for List<T> {
   fn drop(&mut self) {
     let mut head = self.head.take();
     while let Some(node) = head {
-      if let Ok(mut node) = Rc::try_unwrap(node) {
+      if let Ok(mut node) = Arc::try_unwrap(node) {
         head = node.next.take();
       } else {
         break;
@@ -89,7 +89,7 @@ impl<T> List<T> {
   // with an `Rc`
   pub fn prepend(&self, elem: T) -> List<T> {
     List {
-      head: Some(Rc::new(Node {
+      head: Some(Arc::new(Node {
         elem: elem,
         next: self.head.clone(),
       })),
@@ -239,3 +239,41 @@ mod test {
   //   assert_eq!(l.head(), Some(&(500000 - 1)));
   // }
 }
+
+// Thread safety
+// A type is thread-safe if it implements Send and Sync traits
+// These are inherited automatically if all of the components of a type
+// are Send and Sync, similarly to Copy
+// A type is send if it's safe to move to another thread
+// A type is Sync if it's safe to share between multiple threads
+
+// If T is Sync, &T is implicitly Send
+// safe in this context means impossible to cause data races
+
+// Send and Sync are marker traits, which means they're traits with absolutely
+// no interface. A type is either Send or it isn't. It's a property other APIs
+// can require of a type. If a type isn't send, it's statically impossible
+// to be sent to a different thread
+
+// most types are Send and Sync
+// Most are send because they totally own their data.
+// Most are Sync because the only way to share data across threads is to put
+// them behind a shared reference, making them immutable
+
+// Some types have interior mutability, which breaks these properties
+// inherited mutability, in contrast, means the mutability of a value is
+// inherited from the mutability of its container
+
+// Interior mutability allows you to mutate through a shared reference
+// Two classes of interior mutability
+// - Cells: only work in a single-threaded context
+// - Locks: work in a multi-threaded context
+
+// cells are cheaper when they can be used.
+
+// atomics are also an available primitive that acts like a lock
+
+// Rc and Arc both use interior mutability for their reference count
+// and this reference count is shared between every instance
+// Rc uses a cell to accomplish this, making it not thread safe
+// Arc uses an atomic, making it thread safe.
